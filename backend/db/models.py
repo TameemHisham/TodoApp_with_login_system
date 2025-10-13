@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Enum, ForeignKey
 from db.db_config import Base, engine
+# from db_config import Base, engine
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -46,6 +47,14 @@ class TodoList(Base):
 
     # Relationship back to user
     user = relationship("User", back_populates="todos")
+
+
+class Admin(Base):
+    __tablename__ = "admin"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, nullable=False, unique=True)
+    password = Column(String, nullable=False)
 
 
 Base.metadata.create_all(engine)
