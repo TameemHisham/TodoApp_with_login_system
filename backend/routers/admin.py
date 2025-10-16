@@ -1,9 +1,13 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Form, Depends
 from pydantic import BaseModel
 from db.models import Admin as AdminDB, User as UserDB
 from db.db_config import SessionLocal
 from sqlalchemy import select, delete, update
 from routers.users import UserIn
+from auth.hashing import hash_password
+from typing import Annotated
+from auth.dependencies import require_role, Role  # Import dependencies
+
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
@@ -12,62 +16,116 @@ class Admin(BaseModel):
     password: str
 
 
-def verify_admin(credentials: Admin):
+# Protected: Only admins can access these routes
+@router.get("/users")
+def get_users(current_admin: Annotated[AdminDB, Depends(require_role(Role.ADMIN))]):
+    """Get all users - Admin only."""
     with SessionLocal() as session:
-        select_statement = select(AdminDB).where(
-            AdminDB.username == credentials.username,
-            AdminDB.password == credentials.password
-        )
-        result = session.execute(select_statement).first()
+        users = session.execute(select(UserDB)).scalars().all()
+        return {
+            "users": [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "created_at": user.created_at
+                }
+                for user in users
+            ]
+        }
 
-        if not result:
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    current_admin: Annotated[AdminDB, Depends(require_role(Role.ADMIN))]
+):
+    """Delete a user - Admin only."""
+    with SessionLocal() as session:
+        user_exists = session.query(UserDB).where(UserDB.id == user_id).first()
+
+        if not user_exists:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials",
-                headers={"WWW-Authenticate": "Basic"},
+                status_code=404,
+                detail=f"User with id {user_id} doesn't exist"
             )
 
-        return True
+        delete_statement = delete(UserDB).where(UserDB.id == user_id)
+        session.execute(delete_statement)
+        session.commit()
+
+        return {"message": f"Successfully deleted user with id {user_id}"}
 
 
-@router.post("/users")
-def get_users(admin: Admin):
-    if verify_admin(admin):
-        with SessionLocal() as session:
-            select_statement = select(UserDB)
-            rows = session.execute(select_statement).all()
-            return {"response": [list(row) for row in rows]}
+@router.put("/users/{user_id}")
+def update_user(
+    user_id: int,
+    user_data: Annotated[UserIn, Form()],
+    current_admin: Annotated[AdminDB, Depends(require_role(Role.ADMIN))]
+):
+    """Update a user - Admin only."""
+    with SessionLocal() as session:
+        user_exists = session.query(UserDB).where(UserDB.id == user_id).first()
+
+        if not user_exists:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with id {user_id} doesn't exist"
+            )
+
+        update_statement = update(UserDB).where(UserDB.id == user_id).values(
+            username=user_data.username,
+            email=user_data.email,
+            password=hash_password(user_data.password)
+        )
+        session.execute(update_statement)
+        session.commit()
+
+        return {"message": f"Successfully updated user with id {user_id}"}
 
 
-@router.delete("/user/{id}")
-def delete_user(admin: Admin, id: str):
-    if verify_admin(admin):
-        with SessionLocal() as session:
-            user_exists = session.query(UserDB).where(
-                UserDB.id == id).first()
-            if user_exists:
-                delete_statement = delete(UserDB).where(
-                    UserDB.id == id)
-                session.execute(delete_statement)
-                session.commit()
-                return {"response": f"successfully deleted user with id {id}"}
-            return HTTPException(status_code=400, detail={"response": f"user with id:  {id} doesn't exits"})
+@router.get("/users/{user_id}")
+def get_user(
+    user_id: int,
+    current_admin: Annotated[AdminDB, Depends(require_role(Role.ADMIN))]
+):
+    """Get specific user details - Admin only."""
+    with SessionLocal() as session:
+        user = session.query(UserDB).where(UserDB.id == user_id).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with id {user_id} doesn't exist"
+            )
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "created_at": user.created_at
+        }
 
 
-@router.post("/user/{id}")
-def update_user(admin: Admin, id: str, user_data: UserIn):
-    if verify_admin(admin):
-        with SessionLocal() as session:
-            user_exists = session.query(UserDB).where(
-                UserDB.id == id).first()
-            if user_exists:
-                update_statement = update(UserDB).where(
-                    UserDB.id == id).values(
-                    username=user_data.username,
-                    email=user_data.email,
-                    password=user_data.password
-                )
-                session.execute(update_statement)
-                session.commit()
-                return {"response": f"successfully updated user with id {id}"}
-            return HTTPException(status_code=404, detail={"response": f"user with id:  {id} doesn't exits"})
+# Optional: Admin can view all todos across all users
+@router.get("/todos")
+def get_all_todos(current_admin: Annotated[AdminDB, Depends(require_role(Role.ADMIN))]):
+    """Get all todos from all users - Admin only."""
+    from db.models import TodoList as TodoListDB
+
+    with SessionLocal() as session:
+        todos = session.execute(select(TodoListDB)).scalars().all()
+        return {
+            "todos": [
+                {
+                    "id": todo.id,
+                    "user_id": todo.user_id,
+                    "title": todo.title,
+                    "description": todo.description,
+                    "status": todo.status,
+                    "due_date": todo.due_date,
+                    "created_at": todo.created_at
+                }
+                for todo in todos
+            ]
+        }

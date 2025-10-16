@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Enum, ForeignKey
 from db.db_config import Base, engine
 # from db_config import Base, engine
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from datetime import datetime
 import enum
 
@@ -10,27 +10,6 @@ class StatusEnum(enum.Enum):
     NOT_STARTED = "not started"
     IN_PROGRESS = "in progress"
     COMPLETE = "complete"
-
-# -----------------------------
-# * USER TABLE
-# -----------------------------
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String, nullable=False, unique=True)
-    email = Column(String, nullable=False, unique=True)
-    password = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    todos = relationship("TodoList", back_populates="user",
-                         cascade="all, delete")
-
-# -----------------------------
-# * TODO LIST TABLE
-# -----------------------------
 
 
 class TodoList(Base):
@@ -49,12 +28,25 @@ class TodoList(Base):
     user = relationship("User", back_populates="todos")
 
 
-class Admin(Base):
-    __tablename__ = "admin"
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str]
+    password: Mapped[str]
+    email: Mapped[str]
+    role: Mapped[str] = mapped_column(default="user")  # Add this
+    created_at: Mapped[datetime]
+    todos = relationship("TodoList", back_populates="user",
+                         cascade="all, delete")
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String, nullable=False, unique=True)
-    password = Column(String, nullable=False)
+
+class Admin(Base):
+    __tablename__ = "admins"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str]
+    password: Mapped[str]
+    role: Mapped[str] = mapped_column(default="admin")  # Add this
+    created_at: Mapped[datetime]
 
 
 Base.metadata.create_all(engine)
