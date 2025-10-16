@@ -1,45 +1,57 @@
 from pydantic import BaseModel
 from db.db_config import SessionLocal
 from db.models import User as UserDB
-from fastapi import APIRouter
+from fastapi import APIRouter, Form, HTTPException
+from typing import Annotated
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 router = APIRouter(prefix="/user", tags=["users"])
 
 
-class User(BaseModel):
+class UserBase(BaseModel):
     """used for sign in"""
     username: str | None = None
     email: str | None = None
+
+
+class UserIn(UserBase):
     password: str
 
 
-def sign_in_using_x(user: User, user_identity):
+class UserOut(UserBase):
+    pass
+
+
+class UserInDB(UserBase):
+    hashed_password: str
+
+
+async def sign_in_using_x(user: Annotated[UserIn, Form()], user_identity):
     with SessionLocal() as session:
         select_statement = select(UserDB).where(
             (UserDB.username if user.username else UserDB.email) == user_identity)
         user_data = session.execute(select_statement).scalar_one_or_none()
         if user_data is None:
-            return {"response": "user doesn't exist"}
+            return HTTPException(status_code=404, detail={"response": "user doesn't exist"})
         if getattr(user_data, "password") == user.password:
             return {"response": user_data}
-        return {"response": "wrong password"}
+        return HTTPException(status_code=401, detail={"response": "wrong password"})
 
 
 @router.post("/sign_in")
-def sign_in(user: User):
+async def sign_in(user: Annotated[UserIn, Form()]):
     if user.username:
-        res = sign_in_using_x(user, user.username)
+        res = await sign_in_using_x(user, user.username)
         return res
     elif user.email:
-        res = sign_in_using_x(user, user.email)
+        res = await sign_in_using_x(user, user.email)
         return res
-    return {"response": "No username or email"}
+    return HTTPException(status_code=400, detail={"response": "No username or email"})
 
 
 @router.post("/sign_up")
-def sign_up(user: User):
+async def sign_up(user: Annotated[UserIn, Form()]):
     with SessionLocal() as session:
         try:
             if user.username:
@@ -61,6 +73,6 @@ def sign_up(user: User):
             session.refresh(db_user)
             return {"id": db_user.id, "message": "User created successfully"}
         except IntegrityError:
-            return {"response": "username or email has been taken!"}
+            return HTTPException(status_code=409, detail={"response": "username or email has been taken!"})
         except ValueError as e:
-            return {"response": str(e)}
+            return HTTPException(status_code=400, detail={"response": str(e)})

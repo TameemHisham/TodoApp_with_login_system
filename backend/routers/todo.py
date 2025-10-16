@@ -2,9 +2,9 @@ from pydantic import BaseModel
 import datetime
 from db.db_config import SessionLocal
 from db.models import TodoList as TodoListDB, StatusEnum
-from fastapi import APIRouter
+from fastapi import APIRouter, Form, HTTPException
 from sqlalchemy import select, delete, update
-
+from typing import Annotated
 router = APIRouter(prefix="/todo", tags=["todo"])
 
 
@@ -17,7 +17,7 @@ class TodoList(BaseModel):
 
 
 @router.post("/{current_user_id}")
-def new_todo(todo: TodoList, current_user_id: int):
+def new_todo(todo: Annotated[TodoList, Form()], current_user_id: int):
     if current_user_id:
         with SessionLocal() as session:
             try:
@@ -58,7 +58,8 @@ def get_todo(current_user_id: int, todo_id: int):
         row = session.execute(select_statement).first()
         if row:
             return {"response": list(row)}
-        return {"response": f"todo with id:  {todo_id} doesn't exits"}
+        raise HTTPException(status_code=404, detail={
+                            "response": f"todo with id:  {todo_id} doesn't exits"})
 
 
 @router.delete("/{current_user_id}/{todo_id}")
@@ -72,11 +73,12 @@ def delete_todo(current_user_id: int, todo_id: int):
             session.execute(delete_statement)
             session.commit()
             return {"response": f"successfully deleted todo with id {todo_id}"}
-        return {"response": f"todo with id:  {todo_id} doesn't exits"}
+        raise HTTPException(status_code=404, detail={
+                            "response": f"todo with id:  {todo_id} doesn't exits"})
 
 
 @router.post("/{current_user_id}/{todo_id}")
-def update_user(todo: TodoList, current_user_id: int, todo_id: int):
+def update_user(todo: Annotated[TodoList, Form()], current_user_id: int, todo_id: int):
     with SessionLocal() as session:
         user_exists = session.query(TodoListDB).where(
             TodoListDB.id == todo_id).first()
@@ -91,4 +93,5 @@ def update_user(todo: TodoList, current_user_id: int, todo_id: int):
             session.execute(update_statement)
             session.commit()
             return {"response": f"successfully updated user with id {id}"}
-        return {"response": f"user with id:  {id} doesn't exits"}
+        raise HTTPException(status_code=404, detail={
+                            "response": f"user with id:  {id} doesn't exits"})

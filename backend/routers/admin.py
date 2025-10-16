@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from db.models import Admin as AdminDB, User as UserDB
 from db.db_config import SessionLocal
 from sqlalchemy import select, delete, update
-from routers.users import User
+from routers.users import UserIn
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
@@ -51,11 +51,11 @@ def delete_user(admin: Admin, id: str):
                 session.execute(delete_statement)
                 session.commit()
                 return {"response": f"successfully deleted user with id {id}"}
-            return {"response": f"user with id:  {id} doesn't exits"}
+            return HTTPException(status_code=400, detail={"response": f"user with id:  {id} doesn't exits"})
 
 
 @router.post("/user/{id}")
-def update_user(admin: Admin, id: str, user_data: User):
+def update_user(admin: Admin, id: str, user_data: UserIn):
     if verify_admin(admin):
         with SessionLocal() as session:
             user_exists = session.query(UserDB).where(
@@ -70,4 +70,4 @@ def update_user(admin: Admin, id: str, user_data: User):
                 session.execute(update_statement)
                 session.commit()
                 return {"response": f"successfully updated user with id {id}"}
-            return {"response": f"user with id:  {id} doesn't exits"}
+            return HTTPException(status_code=404, detail={"response": f"user with id:  {id} doesn't exits"})
